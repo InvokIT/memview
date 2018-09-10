@@ -2,10 +2,18 @@ import { fromByteArray as base64FromByteArray } from "base64-js";
 import * as queryString from "query-string";
 import { v4 as uuid } from "uuid";
 
+interface IOAuth2RequestParams {
+    client_id: string,
+    redirect_uri: string,
+    response_type: string,
+    scope?: string
+}
+
 interface IProviderConfig {
     name: string,
     authorization_uri: string,
     client_id: string,
+    customizeParams?: (authParams: IOAuth2RequestParams) => any
     scope?: string
 };
 
@@ -151,7 +159,7 @@ export default class Oauth2Client {
         const providerConfig = this.providers.get(providerName);
 
         if (!providerConfig) {
-            throw new Error("Not a known a provider: " + providerName);
+            throw new Error("Not a known provider: " + providerName);
         }
 
         const returnUri = typeof this.returnUri === "function" ? this.returnUri(providerName) : this.returnUri;
@@ -161,15 +169,20 @@ export default class Oauth2Client {
         const state = JSON.stringify(generateState(providerName));
         this.stateStorage.save(state);
 
-        const qs = queryString.stringify({
+        let authParams: any = {
             client_id: providerConfig.client_id,
             redirect_uri: returnUri,
             response_type: "token",
-            scope: providerConfig.scope || null,
-            state: await hash(state)
-        });
+            scope: providerConfig.scope || undefined
+        };
 
-        const authUri = `${providerConfig.authorization_uri}?${qs}`;
+        if (providerConfig.customizeParams) {
+            authParams = providerConfig.customizeParams(authParams);
+        }
+
+        authParams.state = await hash(state);
+
+        const authUri = `${providerConfig.authorization_uri}?${queryString.stringify(authParams)}`;
 
         location.href = authUri;
     }
